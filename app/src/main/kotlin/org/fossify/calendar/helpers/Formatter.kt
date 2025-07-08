@@ -18,6 +18,8 @@ object Formatter {
     private const val DATE_DAY_PATTERN = "d EEEE"
     private const val PATTERN_TIME_12 = "hh:mm a"
     private const val PATTERN_TIME_24 = "HH:mm"
+    private const val PATTERN_SHORT_TIME_12 = "hh"
+    private const val PATTERN_SHORT_TIME_24 = "HH"
 
     private const val PATTERN_HOURS_12 = "h a"
     private const val PATTERN_HOURS_24 = "HH"
@@ -87,6 +89,8 @@ object Formatter {
 
     fun getTime(context: Context, dateTime: DateTime) = dateTime.toString(getTimePattern(context))
 
+    fun getShortTime(context: Context, dateTime: DateTime) = dateTime.toString(getShortTimePattern(context))
+
     fun getDateTimeFromCode(dayCode: String) = DateTimeFormat.forPattern(DAYCODE_PATTERN).withZone(DateTimeZone.UTC).parseDateTime(dayCode)
 
     fun getLocalDateTimeFromCode(dayCode: String) =
@@ -114,6 +118,8 @@ object Formatter {
     fun getHourPattern(context: Context) = if (context.config.use24HourFormat) PATTERN_HOURS_24 else PATTERN_HOURS_12
 
     fun getTimePattern(context: Context) = if (context.config.use24HourFormat) PATTERN_TIME_24 else PATTERN_TIME_12
+
+    fun getShortTimePattern(context: Context) = if (context.config.use24HourFormat) PATTERN_SHORT_TIME_24 else PATTERN_SHORT_TIME_12
 
     fun getExportedTime(ts: Long): String {
         val dateTime = DateTime(ts, DateTimeZone.UTC)

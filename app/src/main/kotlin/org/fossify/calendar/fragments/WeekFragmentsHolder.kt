@@ -134,7 +134,7 @@ class WeekFragmentsHolder : MyFragmentHolder(), WeekFragmentListener {
         binding.weekViewHoursHolder.removeAllViews()
         val hourDateTime = DateTime().withDate(2000, 1, 1).withTime(0, 0, 0, 0)
         for (i in 1..23) {
-            val formattedHours = Formatter.getTime(requireContext(), hourDateTime.withHourOfDay(i))
+            val formattedHours = Formatter.getShortTime(requireContext(), hourDateTime.withHourOfDay(i))
             WeeklyViewHourTextviewBinding.inflate(layoutInflater).root.apply {
                 text = formattedHours
                 setTextColor(textColor)
