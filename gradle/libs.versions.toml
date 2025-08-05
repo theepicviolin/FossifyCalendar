@@ -5,7 +5,7 @@ kotlin = "2.2.0"
 ksp = "2.2.0-2.0.2"
 #Detekt
 detekt = "1.23.8"
-detektCompose = "0.4.22"
+detektCompose = "0.4.26"
 #Androidx
 multidex = "2.0.1"
 print = "1.1.0"
@@ -14,9 +14,9 @@ swiperefreshlayout = "1.1.0"
 #Room
 room = "2.7.2"
 #Fossify
-commons = "4.2.0"
+commons = "4.4.0"
 #Gradle
-gradlePlugins-agp = "8.11.0"
+gradlePlugins-agp = "8.11.1"
 #build
 app-build-compileSDKVersion = "34"
 app-build-targetSDK = "34"
