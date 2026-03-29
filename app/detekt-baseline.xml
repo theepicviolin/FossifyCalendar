@@ -42,7 +42,6 @@
     <ID>CyclomaticComplexMethod:SettingsActivity.kt$SettingsActivity$override fun onActivityResult(requestCode: Int, resultCode: Int, resultData: Intent?)</ID>
     <ID>CyclomaticComplexMethod:SettingsActivity.kt$SettingsActivity$private fun parseFile(inputStream: InputStream?)</ID>
     <ID>CyclomaticComplexMethod:TaskActivity.kt$TaskActivity$private fun getOrderString(repeatRule: Int): String</ID>
-    <ID>CyclomaticComplexMethod:TaskActivity.kt$TaskActivity$private fun gotTask(savedInstanceState: Bundle?, localCalendar: CalendarEntity?, task: Event?)</ID>
     <ID>CyclomaticComplexMethod:TaskActivity.kt$TaskActivity$private fun saveTask()</ID>
     <ID>CyclomaticComplexMethod:WeekFragment.kt$WeekFragment$@SuppressLint("NewApi") private fun addAllDayEvent(dayOfWeek: Int, event: Event)</ID>
     <ID>CyclomaticComplexMethod:WeekFragment.kt$WeekFragment$private fun addDays(days: ArrayList&lt;DayWeekly&gt;)</ID>
