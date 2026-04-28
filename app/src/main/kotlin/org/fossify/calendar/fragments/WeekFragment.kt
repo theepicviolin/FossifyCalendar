@@ -9,6 +9,7 @@ import android.content.res.Resources
 import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.os.Handler
+import android.util.Range
 import android.view.DragEvent
 import android.view.GestureDetector
 import android.view.LayoutInflater
@@ -37,6 +38,7 @@ import org.fossify.calendar.extensions.config
 import org.fossify.calendar.extensions.eventsDB
 import org.fossify.calendar.extensions.eventsHelper
 import org.fossify.calendar.extensions.getWeeklyViewItemHeight
+import org.fossify.calendar.extensions.intersects
 import org.fossify.calendar.extensions.seconds
 import org.fossify.calendar.extensions.shouldStrikeThrough
 import org.fossify.calendar.helpers.Config
@@ -60,6 +62,7 @@ import org.fossify.calendar.interfaces.WeekFragmentListener
 import org.fossify.calendar.interfaces.WeeklyCalendar
 import org.fossify.calendar.models.DayWeekly
 import org.fossify.calendar.models.Event
+import org.fossify.calendar.models.EventWeeklyView
 import org.fossify.calendar.views.MyScrollView
 import org.fossify.commons.dialogs.RadioGroupDialog
 import org.fossify.commons.extensions.adjustAlpha
@@ -74,14 +77,17 @@ import org.fossify.commons.extensions.hideKeyboard
 import org.fossify.commons.extensions.onGlobalLayout
 import org.fossify.commons.extensions.realScreenSize
 import org.fossify.commons.extensions.removeBit
+import org.fossify.commons.extensions.toInt
 import org.fossify.commons.extensions.usableScreenSize
 import org.fossify.commons.helpers.HIGHER_ALPHA
 import org.fossify.commons.helpers.LOWER_ALPHA
 import org.fossify.commons.helpers.MEDIUM_ALPHA
+import org.fossify.commons.helpers.WEEK_SECONDS
 import org.fossify.commons.helpers.ensureBackgroundThread
 import org.fossify.commons.helpers.isNougatPlus
 import org.fossify.commons.models.RadioItem
 import org.joda.time.DateTime
+import org.joda.time.Days
 import java.util.Calendar
 import kotlin.math.max
 import kotlin.math.min
@@ -108,6 +114,7 @@ class WeekFragment : Fragment(), WeeklyCalendar {
     private var screenHeight = 0
     private var rowHeightsAtScale = 0f
     private var prevScaleFactor = 0f
+    private var gestureScaleFactor = 0f
     private var mWasDestroyed = false
     private var isFragmentVisible = false
     private var wasFragmentInit = false
@@ -125,12 +132,14 @@ class WeekFragment : Fragment(), WeeklyCalendar {
     private var currDays = ArrayList<DayWeekly>()
     private var dayColumns = ArrayList<RelativeLayout>()
     private var calendarColors = LongSparseArray<Int>()
+    private var eventTimeRanges = LinkedHashMap<String, LinkedHashMap<Long, EventWeeklyView>>()
     private var currentlyDraggedView: View? = null
 
     private lateinit var binding: FragmentWeekBinding
     private lateinit var scrollView: MyScrollView
     private lateinit var res: Resources
     private lateinit var config: Config
+    private lateinit var scaleDetector: ScaleGestureDetector
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -144,6 +153,7 @@ class WeekFragment : Fragment(), WeeklyCalendar {
         dimCompletedTasks = config.dimCompletedTasks
         highlightWeekends = config.highlightWeekends
         primaryColor = requireContext().getProperPrimaryColor()
+        allDayRows.add(HashSet())
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -158,16 +168,9 @@ class WeekFragment : Fragment(), WeeklyCalendar {
             weekHorizontalGridHolder.layoutParams.height = fullHeight
             weekEventsColumnsHolder.layoutParams.height = fullHeight
 
-            val scaleDetector = getViewScaleDetector()
+            scaleDetector = getViewScaleDetector()
             scrollView.setOnTouchListener { _, motionEvent ->
-                scaleDetector.onTouchEvent(motionEvent)
-                if (motionEvent.action == MotionEvent.ACTION_UP && wasScaled) {
-                    scrollView.isScrollable = true
-                    wasScaled = false
-                    true
-                } else {
-                    false
-                }
+                handleScaleTouch(motionEvent)
             }
         }
 
@@ -320,8 +323,7 @@ class WeekFragment : Fragment(), WeeklyCalendar {
                 val gestureDetector = getViewGestureDetector(layout, index)
 
                 layout.setOnTouchListener { _, motionEvent ->
-                    gestureDetector.onTouchEvent(motionEvent)
-                    true
+                    handleDayColumnTouch(gestureDetector, motionEvent)
                 }
 
                 layout.setOnDragListener { _, dragEvent ->
@@ -431,6 +433,16 @@ class WeekFragment : Fragment(), WeeklyCalendar {
             }
     }
 
+    private fun handleDayColumnTouch(
+        gestureDetector: GestureDetector,
+        motionEvent: MotionEvent
+    ): Boolean {
+        if (!handleScaleTouch(motionEvent)) {
+            gestureDetector.onTouchEvent(motionEvent)
+        }
+        return true
+    }
+
     private fun revertDraggedEvent() {
         activity?.runOnUiThread {
             currentlyDraggedView?.beVisible()
@@ -491,6 +503,25 @@ class WeekFragment : Fragment(), WeeklyCalendar {
         }
     }
 
+    private fun handleScaleTouch(motionEvent: MotionEvent): Boolean {
+        scaleDetector.onTouchEvent(motionEvent)
+        val action = motionEvent.actionMasked
+        if ((action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) && wasScaled) {
+            scrollView.isScrollable = true
+            wasScaled = false
+            return true
+        }
+
+        return scaleDetector.isInProgress || wasScaled || motionEvent.pointerCount > 1
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    private fun attachEventScaleTouchListener(view: View) {
+        view.setOnTouchListener { _, motionEvent ->
+            handleScaleTouch(motionEvent)
+        }
+    }
+
     private fun getViewScaleDetector(): ScaleGestureDetector {
         return ScaleGestureDetector(
             requireContext(),
@@ -500,11 +531,13 @@ class WeekFragment : Fragment(), WeeklyCalendar {
                     prevScaleSpanY = detector.currentSpanY
 
                     val wantedFactor =
-                        config.weeklyViewItemHeightMultiplier - (SCALE_RANGE * percent)
+                        gestureScaleFactor - (SCALE_RANGE * percent)
                     var newFactor = max(min(wantedFactor, MAX_SCALE_FACTOR), MIN_SCALE_FACTOR)
                     if (scrollView.height > defaultRowHeight * newFactor * 24) {
                         newFactor = scrollView.height / 24f / defaultRowHeight
                     }
+
+                    gestureScaleFactor = newFactor
 
                     if (Math.abs(newFactor - prevScaleFactor) > MIN_SCALE_DIFFERENCE) {
                         prevScaleFactor = newFactor
@@ -526,9 +559,16 @@ class WeekFragment : Fragment(), WeeklyCalendar {
                     scrollView.isScrollable = false
                     prevScaleSpanY = detector.currentSpanY
                     prevScaleFactor = config.weeklyViewItemHeightMultiplier
+                    gestureScaleFactor = prevScaleFactor
                     wasScaled = true
                     screenHeight = context!!.realScreenSize.y
                     return super.onScaleBegin(detector)
+                }
+
+                override fun onScaleEnd(detector: ScaleGestureDetector) {
+                    scrollView.isScrollable = true
+                    wasScaled = false
+                    super.onScaleEnd(detector)
                 }
             })
     }
@@ -653,20 +693,22 @@ class WeekFragment : Fragment(), WeeklyCalendar {
                         }
                     }
 
-                    root.setOnLongClickListener { view ->
-                        currentlyDraggedView = view
-                        val shadowBuilder = View.DragShadowBuilder(view)
-                        val clipData = ClipData.newPlainText(
-                            WEEKLY_EVENT_ID_LABEL,
-                            "${event.id};${event.startTS};${event.endTS}"
-                        )
-                        if (isNougatPlus()) {
-                            view.startDragAndDrop(clipData, shadowBuilder, null, 0)
-                        } else {
-                            view.startDrag(clipData, shadowBuilder, null, 0)
+                        attachEventScaleTouchListener(root)
+
+                        root.setOnLongClickListener { view ->
+                            currentlyDraggedView = view
+                            val shadowBuilder = View.DragShadowBuilder(view)
+                            val clipData = ClipData.newPlainText(
+                                WEEKLY_EVENT_ID_LABEL,
+                                "${event.id};${event.startTS};${event.endTS}"
+                            )
+                            if (isNougatPlus()) {
+                                view.startDragAndDrop(clipData, shadowBuilder, null, 0)
+                            } else {
+                                view.startDrag(clipData, shadowBuilder, null, 0)
+                            }
+                            true
                         }
-                        true
-                    }
 
                     root.setOnDragListener(DragListener())
                 }
